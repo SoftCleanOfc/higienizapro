@@ -1,1 +1,29 @@
-const CACHE='higienizapro-pwa-v7';const CORE=['/','/manifest.webmanifest','/icon.svg'];self.addEventListener('install',e=>e.waitUntil((async()=>{await caches.open(CACHE).then(c=>c.addAll(CORE));await self.skipWaiting()})()));self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting()});self.addEventListener('activate',e=>e.waitUntil((async()=>{await caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))));await self.clients.claim()})()));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const url=new URL(e.request.url);if(e.request.mode==='navigate'||url.pathname==='/'||url.pathname.endsWith('/index.html')){e.respondWith(fetch(e.request,{cache:'no-store'}).then(res=>{if(res.ok)caches.open(CACHE).then(c=>c.put(e.request,res.clone()));return res}).catch(()=>caches.match(e.request).then(c=>c||caches.match('/'))));return}e.respondWith(caches.match(e.request).then(cached=>cached||fetch(e.request).then(res=>{if(res.ok&&url.origin===self.location.origin)caches.open(CACHE).then(c=>c.put(e.request,res.clone()));return res}).catch(()=>caches.match('/'))))});
+const CACHE='higienizapro-pwa-v8';
+const CORE=['/','/manifest.webmanifest','/icon.svg'];
+self.addEventListener('install',event=>event.waitUntil((async()=>{try{const cache=await caches.open(CACHE);await cache.addAll(CORE)}catch(error){console.warn('Pré-cache indisponível; o app continuará usando a rede',error)}await self.skipWaiting()})()));
+self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting()});
+self.addEventListener('activate',event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(key=>key.startsWith('higienizapro-pwa-')&&key!==CACHE).map(key=>caches.delete(key)));await self.clients.claim()})()));
+self.addEventListener('fetch',event=>{
+ const request=event.request;
+ if(request.method!=='GET')return;
+ const url=new URL(request.url);
+ if(url.origin!==self.location.origin)return;
+ // Always ask the server for the latest HTML, worker, manifest and same-origin assets.
+ // Cache is only a fallback when offline; never prefer a potentially stale cached file.
+ event.respondWith((async()=>{
+   try{
+     const freshRequest=new Request(request,{cache:'no-store'});
+     const response=await fetch(freshRequest,{cache:'no-store'});
+     if(response&&response.ok&&response.type!=='opaque'){
+       const cache=await caches.open(CACHE);
+       await cache.put(request,response.clone()).catch(()=>{});
+     }
+     return response;
+   }catch(error){
+     const cached=await caches.match(request);
+     if(cached)return cached;
+     if(request.mode==='navigate')return (await caches.match('/'))||Response.error();
+     return Response.error();
+   }
+ })());
+});
