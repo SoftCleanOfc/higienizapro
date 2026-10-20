@@ -133,6 +133,19 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPro
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reduced&&!raf)raf=requestAnimationFrame(frame)});
 })();
 
+const productCatalog=[
+{brand:'Vonixx',name:'Linha de limpeza interna automotiva',category:'auto',desc:'Marca de estética automotiva. Confira o produto específico e as superfícies autorizadas para bancos, carpetes e teto.',url:'https://vonixx.com.br/'},
+{brand:'Easytech',name:'Produtos para estética automotiva',category:'auto',desc:'Consulte o catálogo e a ficha técnica do item exato antes de aplicar em tecidos ou estofados.',url:'https://easytech.com.br/'},
+{brand:'Protelim',name:'Linha de limpeza automotiva',category:'auto',desc:'Pesquise limpadores indicados pelo fabricante para o tipo de tecido e uso pretendido.',url:'https://protelim.com.br/'},
+{brand:'Kärcher',name:'Detergentes e soluções de limpeza',category:'extracao',desc:'Verifique se a solução escolhida é aprovada para a máquina e para o material que será limpo.',url:'https://www.kaercher.com/br/'},
+{brand:'Spartan',name:'Saneantes de uso profissional',category:'tecido',desc:'A marca oferece linhas profissionais variadas. Confirme na ficha técnica a indicação para tecido e estofado.',url:'https://www.spartanbrasil.com.br/'},
+{brand:'3M',name:'Produtos de limpeza e tratamento',category:'mancha',desc:'A marca possui várias linhas; a aplicação depende do produto específico e da superfície indicada.',url:'https://www.3m.com.br/'},
+{brand:'IPC',name:'Soluções profissionais de limpeza',category:'extracao',desc:'Consulte o catálogo e a documentação para confirmar aplicação e compatibilidade com equipamento.',url:'https://www.ipcworldwide.com/'},
+{brand:'Enzimáticos profissionais',name:'Categoria para resíduos orgânicos',category:'mancha',desc:'Categoria de pesquisa, não um produto específico. Confirme tecido permitido, tempo de ação e enxágue no rótulo.',url:'https://vonixx.com.br/'},
+{brand:'Limpadores para estofados têxteis',name:'Categoria para sofá, poltrona e colchão',category:'tecido',desc:'Escolha produto cuja documentação autorize explicitamente o material. Faça teste em área discreta.',url:'https://www.kaercher.com/br/'}
+];
+function renderProducts(){const search=($('#productSearch').value||'').toLocaleLowerCase('pt-BR'),cat=$('#productCategory').value;const rows=productCatalog.filter(p=>(cat==='todos'||p.category===cat)&&(p.brand+' '+p.name+' '+p.desc).toLocaleLowerCase('pt-BR').includes(search));$('#productList').innerHTML=rows.map(p=>'<article class="product"><div class="product-icon">⚗</div><div><b>'+esc(p.brand)+' — '+esc(p.name)+'</b><p>'+esc(p.desc)+'</p><span class="tag">Confirmar ficha técnica</span> <a href="'+p.url+'" target="_blank" rel="noopener noreferrer" style="color:#6fe8ff;font-size:12px">Site oficial ↗</a></div></article>').join('')||'<div class="empty">Nenhum resultado. Tente outra busca ou categoria.</div>'}
+$('#productSearch').addEventListener('input',renderProducts);$('#productCategory').addEventListener('change',renderProducts);renderProducts();
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));refresh();
 </script>
 </body></html>
