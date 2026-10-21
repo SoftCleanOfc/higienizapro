@@ -143,7 +143,7 @@ async function classifyPhoto(file){
   });
   return best;
  };
- const [fullScores,cropScores]=await Promise.all([scoreImage(whole),scoreImage(crop)]);
+ const fullScores=await scoreImage(whole);const cropScores=await scoreImage(crop);
  const ranked=F.map(f=>({id:f.id,score:((fullScores.get(f.id)||0)+(cropScores.get(f.id)||0))/2}))
   .sort((x,y)=>y.score-x.score);
  if(!ranked.length)throw new Error('O modelo não encontrou uma correspondência. Tente uma foto mais nítida.');
