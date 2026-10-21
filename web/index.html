@@ -338,16 +338,19 @@ const dilutionSelect=$('#dilutionProduct');const oldDilutionKey=dilutionSelect.v
  select.addEventListener('change',renderTrigger);
  renderTrigger();renderMenu();
 })();
-const brandLogoSources={
- 'Vonixx':'https://www.vonixx.com.br/wp-content/uploads/2024/10/logo-vonixx-branco-.webp',
- 'Vintex':'https://static.martineliferramentas.com.br/image/cache/catalog/marcas/Vintex-600x600.jpg.webp',
- 'Spartan':'https://www.google.com/s2/favicons?domain=spartanbrasil.com.br&sz=128',
- 'Easytech':'https://www.google.com/s2/favicons?domain=easytechshield.com.br&sz=128',
- 'G&S':'https://www.google.com/s2/favicons?domain=gshomesolutions.com.br&sz=128'
-};
 function brandLogoMarkup(brand){
- const src=brandLogoSources[brand];
- return src?'<img class="brand-picker-logo" src="'+esc(src)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><span class="brand-picker-fallback" style="display:none">'+esc(brand==='G&S'?'G&S':brand.slice(0,2).toUpperCase())+'</span>':'<span class="brand-picker-fallback">'+esc(brand==='G&S'?'G&S':brand.slice(0,2).toUpperCase())+'</span>';
+ // Logos locais em SVG: não dependem de servidores externos, favicons ou hotlink.
+ // Cada marca tem identidade visual própria e continua visível mesmo sem internet.
+ const logos={
+  'Vonixx':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#fff"/><path d="M15 13 L29 41 L43 13 L34 13 L29 26 L24 13 Z" fill="#171717"/><text x="49" y="34" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="800" letter-spacing="-1.1" fill="#171717">VONIXX</text><path d="M51 40 H151" stroke="#d71920" stroke-width="2.5" stroke-linecap="round"/></svg>',
+  'Vintex':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#087f83"/><path d="M13 14 L24 40 L35 14 L27 14 L24 24 L21 14 Z" fill="#fff"/><text x="40" y="35" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="800" letter-spacing=".2" fill="#fff">VINTEX</text><path d="M42 41 H153" stroke="#b5f4ed" stroke-width="2" stroke-linecap="round"/></svg>',
+  'Spartan':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#fff"/><text x="90" y="34" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="800" fill="#183c65">SPARTAN</text></svg>',
+  'Easytech':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#fff"/><text x="90" y="34" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="800" fill="#171717">EASYTECH</text></svg>',
+  'G&S':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#fff"/><text x="90" y="35" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="800" fill="#167e79">G&amp;S</text></svg>'
+ };
+ const svg=logos[brand];
+ if(!svg)return '<span class="brand-picker-fallback">'+esc(brand==='G&S'?'G&S':brand.slice(0,2).toUpperCase())+'</span>';
+ return '<img class="brand-picker-logo" src="data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg)+'" alt="Logo '+esc(brand)+'" loading="eager">';
 }
 function initStyledSelects(){
  const config={
