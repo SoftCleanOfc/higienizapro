@@ -119,7 +119,7 @@ module.exports = async function handler(req, res) {
       JSON.stringify(products)
     ].join('\n\n');
 
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
       method: 'POST',
       headers: {
@@ -145,10 +145,18 @@ module.exports = async function handler(req, res) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const message = data && data.error && data.error.message;
-      // Não registrar chave nem URL de requisição.
-      console.error('Gemini visual assessment failed:', response.status, message || 'API error');
+      const providerStatus = data && data.error && data.error.status;
+      // Não registrar chave nem URL de requisição. Detalhes úteis, sem credenciais, ajudam no diagnóstico.
+      console.error('Gemini visual assessment failed:', response.status, providerStatus || 'API_ERROR', message || 'API error');
+      let detail = 'Erro HTTP ' + response.status;
+      if (response.status === 400) detail = 'O Google rejeitou os parâmetros enviados (HTTP 400).';
+      else if (response.status === 401 || response.status === 403) detail = 'O Google recusou a chave ou as permissões (HTTP ' + response.status + ').';
+      else if (response.status === 404) detail = 'O modelo Gemini solicitado não foi encontrado ou não está disponível para esta chave (HTTP 404).';
+      else if (response.status === 429) detail = 'A cota ou o limite de uso da API Gemini foi atingido (HTTP 429).';
+      else if (response.status >= 500) detail = 'O serviço do Google Gemini apresentou uma falha temporária (HTTP ' + response.status + ').';
       return res.status(502).json({
-        error: 'Não foi possível concluir a análise por IA. Confira se OPENAI_API_KEY contém a chave do Google AI Studio e se a API Gemini está habilitada.'
+        code: 'GEMINI_API_ERROR',
+        error: 'A análise não foi concluída. ' + detail + (providerStatus ? ' Código: ' + String(providerStatus).slice(0, 80) + '.' : '')
       });
     }
 
