@@ -112,6 +112,41 @@ async function analyze(){if(!file)return;const b=$('fl-analyze');b.disabled=true
 function clear(){file=null;if(url){URL.revokeObjectURL(url);url=null}$('fl-photo').value='';$('fl-preview').removeAttribute('src');$('fl-preview').style.display='none';$('fl-analyze').disabled=true;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;progress(0);status('Escolha uma foto para começar.')}
 function saveCorrection(){if(!matches[0])return;let a=[];try{a=JSON.parse(localStorage.getItem('higienizapro_fabric_corrections')||'[]')}catch(e){}a.push({predicted:matches[0].id,corrected:$('fl-correction').value,createdAt:new Date().toISOString(),imageName:file?.name||'',model:'clip-vit-base-patch32',note:'Correção do usuário; revisar antes de treinamento.'});try{localStorage.setItem('higienizapro_fabric_corrections',JSON.stringify(a.slice(-300)));status('Correção salva neste aparelho para revisão futura; o modelo não foi retreinado.')}catch(e){status('Não foi possível salvar a correção neste aparelho.')}}
 function wire(){$('fl-search').addEventListener('input',catalog);$('fl-family').addEventListener('change',catalog);$('fl-photo').addEventListener('change',e=>{file=e.target.files&&e.target.files[0]||null;if(!file)return;if(!file.type.startsWith('image/')){clear();status('Escolha uma imagem válida.');return}if(file.size>15*1024*1024){clear();status('A foto excede 15 MB. Escolha uma imagem menor.');return}if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(file);$('fl-preview').src=url;$('fl-preview').style.display='block';$('fl-analyze').disabled=false;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;status('Foto pronta. A análise será executada localmente.')});$('fl-analyze').addEventListener('click',analyze);$('fl-clear').addEventListener('click',clear);$('fl-save-correction').addEventListener('click',saveCorrection)}
-function start(){nav();view();populate();catalog();wire()}
+async function classifyPhoto(file){
+ const c=await getModel();
+ const bmp=await createImageBitmap(file),can=document.createElement('canvas'),sc=Math.min(1,768/Math.max(bmp.width,bmp.height));
+ can.width=Math.max(1,Math.round(bmp.width*sc));can.height=Math.max(1,Math.round(bmp.height*sc));
+ const ctx=can.getContext('2d');if(!ctx)throw new Error('Não foi possível preparar a imagem.');
+ ctx.drawImage(bmp,0,0,can.width,can.height);bmp.close?.();
+ const labels=F.map(f=>f.prompt),out=await c(can,labels);
+ const a=(Array.isArray(out)?out:[]).map(o=>{let i=labels.indexOf(o.label);if(i<0)i=labels.findIndex(x=>x===o.label||x.includes(o.label)||o.label.includes(x));return i>=0?{id:F[i].id,score:Number(o.score)||0}:null}).filter(Boolean).sort((x,y)=>y.score-x.score).slice(0,5);
+ if(!a.length)throw new Error('O modelo não encontrou correspondências. Tente uma foto mais nítida.');
+ return a;
+}
+function scannerConfidence(score,gap){if(score>=.16&&gap>=.025)return 'moderada';if(score>=.10)return 'baixa';return 'muito baixa'}
+function connectScannerToLocalLibrary(){
+ const btn=document.getElementById('prepareAnalysis');if(!btn||btn.dataset.localFabricHandler==='ready')return;
+ btn.dataset.localFabricHandler='ready';
+ btn.onclick=async()=>{
+  const photo=window.scanPhoto|| (typeof scanPhoto!=='undefined'?scanPhoto:null);
+  if(!photo){if(typeof toast==='function')toast('Selecione uma foto primeiro.');return}
+  const original=btn.textContent;btn.disabled=true;btn.textContent='Carregando modelo visual…';
+  const result=document.getElementById('scanResult'),empty=document.getElementById('scanEmpty'),summary=document.getElementById('scanSummary'),details=document.getElementById('scanAiDetails'),products=document.getElementById('scanProducts'),next=document.getElementById('scanNextStep');
+  result?.classList.add('show');if(empty)empty.style.display='none';if(summary)summary.textContent='Preparando o modelo visual no aparelho. A primeira carga pode baixar cerca de 150 MB.';if(details)details.hidden=true;if(products)products.innerHTML='';if(next)next.textContent='Aguarde a comparação local.';
+  try{
+   const a=await classifyPhoto(photo),top=F.find(f=>f.id===a[0].id),second=a[1]||{score:0},confidence=scannerConfidence(a[0].score,a[0].score-second.score);
+   const confidenceLabel=confidence==='moderada'?'moderada':confidence==='baixa'?'baixa':'muito baixa';
+   if(summary)summary.textContent='Comparação visual local concluída. Correspondência mais alta: '+top.name+'. Confiança '+confidenceLabel+'. Isso não confirma a composição do tecido.';
+   if(details){details.innerHTML='<div class="ai-report-panel"><h4>Possíveis tecidos encontrados</h4>'+a.map((m,i)=>{const f=F.find(x=>x.id===m.id);return '<p><b>'+(i+1)+'. '+esc(f.name)+'</b> — pontuação relativa '+Math.round(m.score*100)+'%<br><span>'+esc(f.desc)+'</span></p>'}).join('')+'</div><div class="ai-report-panel"><h4>Limitações da identificação</h4><p>As pontuações indicam semelhança relativa entre as opções deste catálogo. Não são probabilidades calibradas, nem identificam com certeza a composição química ou o acabamento.</p><p>Confirme pela etiqueta ou ficha técnica do estofado antes de escolher um procedimento.</p></div>';details.hidden=false}
+   if(products)products.innerHTML='<h4>Produtos do catálogo</h4><p>Nenhum produto foi recomendado automaticamente. A biblioteca identificou apenas semelhanças visuais; selecione um produto compatível com a etiqueta e consulte a ficha técnica e a diluição cadastrada.</p>';
+   if(next)next.innerHTML='<b>Próximo passo:</b> '+(confidence==='moderada'?'Confira se a trama, o brilho e o toque correspondem à primeira opção. ': 'O resultado é incerto; faça outra foto de perto, com luz natural, e confira a etiqueta. ')+'Antes de aplicar qualquer produto, faça teste de compatibilidade e solidez da cor em área escondida e espere secar completamente.';
+   if(typeof scanAnalysis!=='undefined')scanAnalysis={source:'local-fabric-library',fabric_guess:top.name,fabric_confidence:confidence,summary:summary?.textContent||'',matches:a.map(m=>({name:F.find(f=>f.id===m.id).name,score:m.score})),recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta e espere secar completamente.']};
+   if(typeof toast==='function')toast('Análise local concluída sem chamar a API.');
+   result?.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){console.error('Análise local de tecido falhou',e);if(summary)summary.textContent='Não foi possível concluir a análise local.';if(next)next.textContent=(e&&e.message?e.message:'Erro no modelo visual.')+' Verifique a conexão para baixar o modelo e tente novamente.';if(typeof toast==='function')toast(e?.message||'Falha na análise local.')}
+  finally{btn.disabled=false;btn.textContent=original}
+ };
+}
+function start(){nav();view();populate();catalog();wire();connectScannerToLocalLibrary()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
