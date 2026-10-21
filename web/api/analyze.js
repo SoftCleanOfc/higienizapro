@@ -1,3 +1,7 @@
+const rateLimit = new Map();
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX_REQUESTS = 6;
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -5,6 +9,22 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Método não permitido.' });
+  }
+
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const clientIp = String(Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor || (req.socket && req.socket.remoteAddress) || 'unknown').split(',')[0].trim();
+  const now = Date.now();
+  let limit = rateLimit.get(clientIp);
+  if (!limit || now - limit.startedAt >= RATE_WINDOW_MS) limit = { startedAt: now, count: 0 };
+  limit.count += 1;
+  rateLimit.set(clientIp, limit);
+  if (rateLimit.size > 1000) {
+    for (const [ip, entry] of rateLimit) {
+      if (now - entry.startedAt >= RATE_WINDOW_MS) rateLimit.delete(ip);
+    }
+  }
+  if (limit.count > RATE_MAX_REQUESTS) {
+    return res.status(429).json({ error: 'Muitas análises em pouco tempo. Aguarde alguns minutos antes de tentar novamente.' });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
