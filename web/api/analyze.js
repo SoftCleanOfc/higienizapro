@@ -123,29 +123,61 @@ module.exports = async function handler(req, res) {
     ].join('\n\n');
 
     const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: inputText },
-            { inline_data: { mime_type: mimeType, data: imageBase64 } }
-          ]
-        }],
-        tools: [{ google_search: {} }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-          responseJsonSchema: schema
+    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+    const requestBody = {
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: inputText },
+          { inline_data: { mime_type: mimeType, data: imageBase64 } }
+        ]
+      }],
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        responseJsonSchema: schema
+      }
+    };
+
+    // Evita deixar a requisição presa indefinidamente. Se o modo com pesquisa
+    // não for aceito pela API, tenta uma vez sem pesquisa para ainda analisar a foto.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      if (!response.ok && [400, 404, 422].includes(response.status)) {
+        const firstError = await response.clone().json().catch(() => ({}));
+        const message = String(firstError && firstError.error && firstError.error.message || '').toLowerCase();
+        if (response.status === 404 || /google_search|tool|structured output|responsejsonschema|schema/.test(message)) {
+          const fallbackBody = { ...requestBody };
+          delete fallbackBody.tools;
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(fallbackBody),
+            signal: controller.signal
+          });
         }
-      })
-    });
+      }
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return res.status(504).json({
+          code: 'GEMINI_TIMEOUT',
+          error: 'A análise demorou demais para responder. Tente uma foto menor ou tente novamente em instantes.'
+        });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
