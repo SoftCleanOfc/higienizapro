@@ -101,21 +101,24 @@ module.exports = async function handler(req, res) {
 
     const instructions = [
       'Você é um assistente técnico para profissionais de higienização de estofados no Brasil.',
-      'Analise a foto e as observações. Diferencie o que é visível do que é apenas hipótese. Foto não confirma com certeza a composição de um tecido nem a causa química de uma mancha.',
-      'Use somente os produtos do catálogo enviado. Recomende no máximo três produtos e somente quando as superfícies, o método e a segurança cadastrados forem compatíveis. O nome recomendado deve corresponder exatamente ao nome de um produto do catálogo. Se nenhum for claramente adequado, devolva uma lista vazia.',
-      'Nunca invente diluições, tempos de ação, propriedades químicas ou alegações de desinfecção. Se citar uma diluição, ela deve existir literalmente nos dados de diluição do produto enviado. Não recomende misturar produtos químicos.',
-      'Dê passos curtos e práticos. Inclua teste em área discreta quando houver incerteza de tecido ou cor. Não recomende aplicar produto em couro, seda, lã, linho ou outro material se a ficha do produto não autorizar.',
+      'PRIORIDADE DO PEDIDO: siga primeiro o pedido principal escrito pelo profissional nas observações. Se ele pedir apenas identificação do tecido, concentre a resposta nisso; não force uma recomendação de produto. Se pedir produto ou diluição, responda também a isso.',
+      'Use a foto como evidência visual e os campos material/mancha como contexto. Diferencie fatos visíveis de hipóteses: uma foto não confirma com certeza a composição de um tecido nem a causa química de uma mancha.',
+      'ESTRATÉGIA DE RESPOSTA: primeiro verifique o catálogo fornecido e use-o como fonte prioritária para produtos cadastrados, compatibilidade, método e diluição. Se o catálogo não tiver informação suficiente para responder ao pedido, complemente com conhecimento técnico geral confiável e, quando disponível, pesquise na web usando a ferramenta de busca. Prefira fontes oficiais do fabricante, rótulos e fichas técnicas. Deixe explícito o que veio do catálogo e o que é complemento externo/da IA.',
+      'Se fizer pesquisa externa, mencione na resposta resumida o nome da fonte e inclua o endereço completo no campo cautions ou steps, quando útil. Nunca diga que pesquisou na web se não tiver realmente usado resultados de busca. Se não houver pesquisa disponível, informe que é uma orientação complementar não confirmada pelo catálogo.',
+      'Use somente produtos do catálogo em recommended_products. Nunca invente um produto para preencher lacunas. Recomende no máximo três produtos e somente quando as superfícies, o método e a segurança cadastrados forem compatíveis. O nome recomendado deve corresponder exatamente ao nome de um produto do catálogo. Se nenhum for claramente adequado, devolva uma lista vazia.',
+      'Nunca invente diluições, tempos de ação, propriedades químicas ou alegações de desinfecção. Uma diluição de produto cadastrado só pode ser apresentada como instrução oficial se constar literalmente nos dados desse produto. Informação externa não pode substituir ou contradizer a ficha oficial; se não conseguir confirmar a proporção para aquele produto e uso, diga isso claramente e não improvise.',
+      'Não recomende misturar produtos químicos. Dê passos curtos e práticos. Inclua teste em área discreta quando houver incerteza de tecido ou cor. Não recomende aplicar produto em couro, seda, lã, linho ou outro material se a ficha do produto não autorizar.',
       'Se a imagem não permitir conclusão, use confiança indeterminada/baixa e diga qual informação ou teste simples falta. Não afirme diagnóstico definitivo nem garanta remoção da mancha.',
-      'Responda em português brasileiro, sem mandar o profissional procurar outro documento. Se uma informação essencial não existir no catálogo, diga explicitamente que não há dado confirmado e não improvise.',
+      'Responda em português brasileiro. Se uma informação essencial não existir no catálogo e não puder ser confirmada por fonte confiável, diga explicitamente que não há dado confirmado e não improvise.',
       'Retorne exclusivamente um objeto JSON válido, sem markdown, sem cercas de código e sem texto antes ou depois. O objeto deve conter exatamente estas propriedades: ' + JSON.stringify(schema.properties)
     ].join(' ');
 
     const inputText = [
       instructions,
+      'PEDIDO PRINCIPAL DO PROFISSIONAL: ' + (notes || 'Nenhum pedido específico; faça uma análise geral da foto.'),
       'Material informado pelo profissional: ' + fabric,
       'Mancha/odor informado: ' + stain,
-      'Observações: ' + (notes || 'nenhuma'),
-      'Catálogo disponível (use somente estes produtos e os dados cadastrados):',
+      'CATÁLOGO DO APLICATIVO (fonte prioritária para dados dos produtos):',
       JSON.stringify(products)
     ].join('\n\n');
 
@@ -134,6 +137,7 @@ module.exports = async function handler(req, res) {
             { inline_data: { mime_type: mimeType, data: imageBase64 } }
           ]
         }],
+        tools: [{ google_search: {} }],
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.2,
