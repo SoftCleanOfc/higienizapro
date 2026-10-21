@@ -194,6 +194,6 @@ function connectScannerToLocalLibrary(){
   finally{btn.disabled=false;btn.textContent=original}
  };
 }
-function start(){nav();view();populate();catalog();wire();connectScannerToLocalLibrary()}
+function start(){/* A interface experimental de Tecidos/CLIP fica desativada; o scanner principal usa apenas DINOv2. */connectScannerToLocalLibrary()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
