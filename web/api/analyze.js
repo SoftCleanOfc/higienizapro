@@ -27,21 +27,26 @@ module.exports = async function handler(req, res) {
     return res.status(429).json({ error: 'Muitas análises em pouco tempo. Aguarde alguns minutos antes de tentar novamente.' });
   }
 
+  // Mantém o nome da variável já configurada no Vercel. O valor deve ser uma chave
+  // do Google AI Studio/Gemini, não uma chave da OpenAI.
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return res.status(503).json({
       code: 'AI_NOT_CONFIGURED',
-      error: 'A análise por IA ainda não está habilitada no servidor. Falta configurar OPENAI_API_KEY nas variáveis de ambiente do projeto Vercel.'
+      error: 'A análise por IA não está habilitada. Configure OPENAI_API_KEY nas variáveis de ambiente do Vercel com sua chave do Google AI Studio.'
     });
   }
 
   try {
     const body = req.body || {};
     const image = typeof body.image === 'string' ? body.image : '';
-    if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 3500000) {
+    const imageMatch = image.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+    if (!imageMatch || image.length > 3500000) {
       return res.status(400).json({ error: 'A imagem não é válida ou ficou grande demais. Escolha uma foto mais leve.' });
     }
 
+    const mimeType = 'image/' + imageMatch[1];
+    const imageBase64 = imageMatch[2];
     const clean = (value, max = 500) => String(value == null ? '' : value).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
     const fabric = clean(body.fabric, 80) || 'não identificado pelo usuário';
     const stain = clean(body.stain, 100) || 'não informado';
@@ -101,10 +106,12 @@ module.exports = async function handler(req, res) {
       'Nunca invente diluições, tempos de ação, propriedades químicas ou alegações de desinfecção. Se citar uma diluição, ela deve existir literalmente nos dados de diluição do produto enviado. Não recomende misturar produtos químicos.',
       'Dê passos curtos e práticos. Inclua teste em área discreta quando houver incerteza de tecido ou cor. Não recomende aplicar produto em couro, seda, lã, linho ou outro material se a ficha do produto não autorizar.',
       'Se a imagem não permitir conclusão, use confiança indeterminada/baixa e diga qual informação ou teste simples falta. Não afirme diagnóstico definitivo nem garanta remoção da mancha.',
-      'Responda em português brasileiro, sem mandar o profissional procurar outro documento. Se uma informação essencial não existir no catálogo, diga explicitamente que não há dado confirmado e não improvise.'
+      'Responda em português brasileiro, sem mandar o profissional procurar outro documento. Se uma informação essencial não existir no catálogo, diga explicitamente que não há dado confirmado e não improvise.',
+      'Retorne exclusivamente um objeto JSON válido, sem markdown, sem cercas de código e sem texto antes ou depois. O objeto deve conter exatamente estas propriedades: ' + JSON.stringify(schema.properties)
     ].join(' ');
 
     const inputText = [
+      instructions,
       'Material informado pelo profissional: ' + fabric,
       'Mancha/odor informado: ' + stain,
       'Observações: ' + (notes || 'nenhuma'),
@@ -112,31 +119,25 @@ module.exports = async function handler(req, res) {
       JSON.stringify(products)
     ].join('\n\n');
 
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + apiKey,
+        'x-goog-api-key': apiKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-        store: false,
-        max_output_tokens: 1300,
-        instructions,
-        input: [{
+        contents: [{
           role: 'user',
-          content: [
-            { type: 'input_text', text: inputText },
-            { type: 'input_image', image_url: image, detail: 'high' }
+          parts: [
+            { text: inputText },
+            { inline_data: { mime_type: mimeType, data: imageBase64 } }
           ]
         }],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'higienizapro_visual_assessment',
-            strict: true,
-            schema
-          }
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 1800
         }
       })
     });
@@ -144,17 +145,21 @@ module.exports = async function handler(req, res) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const message = data && data.error && data.error.message;
-      console.error('OpenAI visual assessment failed:', response.status, message || 'API error');
+      // Não registrar chave nem URL de requisição.
+      console.error('Gemini visual assessment failed:', response.status, message || 'API error');
       return res.status(502).json({
-        error: 'Não foi possível concluir a análise por IA agora. Confira a configuração do serviço e tente novamente.'
+        error: 'Não foi possível concluir a análise por IA. Confira se OPENAI_API_KEY contém a chave do Google AI Studio e se a API Gemini está habilitada.'
       });
     }
 
-    const outputText = data.output_text || (Array.isArray(data.output) ? data.output.flatMap((item) => Array.isArray(item.content) ? item.content : []).filter((item) => item.type === 'output_text').map((item) => item.text || '').join('') : '');
+    const outputText = Array.isArray(data.candidates)
+      ? data.candidates.flatMap((candidate) => candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : []).map((part) => part.text || '').join('').trim()
+      : '';
     let result;
     try {
-      result = JSON.parse(outputText);
+      result = JSON.parse(outputText.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, ''));
     } catch {
+      console.error('Gemini returned invalid JSON for visual assessment.');
       return res.status(502).json({ error: 'A IA retornou um relatório inválido. Tente novamente.' });
     }
 
