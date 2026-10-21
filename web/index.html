@@ -339,8 +339,8 @@ const dilutionSelect=$('#dilutionProduct');const oldDilutionKey=dilutionSelect.v
  renderTrigger();renderMenu();
 })();
 function brandLogoMarkup(brand){
- // Logos locais em SVG: não dependem de servidores externos, favicons ou hotlink.
- // Cada marca tem identidade visual própria e continua visível mesmo sem internet.
+ // Vonixx e Vintex usam arquivos de logo encontrados em fontes públicas da marca;
+ // as demais marcas mantêm versões vetoriais leves para não deixar o filtro vazio.
  const logos={
   'Vonixx':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#fff"/><path d="M15 13 L29 41 L43 13 L34 13 L29 26 L24 13 Z" fill="#171717"/><text x="49" y="34" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="800" letter-spacing="-1.1" fill="#171717">VONIXX</text><path d="M51 40 H151" stroke="#d71920" stroke-width="2.5" stroke-linecap="round"/></svg>',
   'Vintex':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 54"><rect width="180" height="54" rx="8" fill="#087f83"/><path d="M13 14 L24 40 L35 14 L27 14 L24 24 L21 14 Z" fill="#fff"/><text x="40" y="35" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="800" letter-spacing=".2" fill="#fff">VINTEX</text><path d="M42 41 H153" stroke="#b5f4ed" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -350,6 +350,15 @@ function brandLogoMarkup(brand){
  };
  const svg=logos[brand];
  if(!svg)return '<span class="brand-picker-fallback">'+esc(brand==='G&S'?'G&S':brand.slice(0,2).toUpperCase())+'</span>';
+ const official={
+  'Vonixx':'https://cdn.brandfetch.io/idVUwvThHK/w/1000/h/1000/theme/dark/icon.png?c=1bxid64Mup7aczewSAYMX&t=1764201767944',
+  'Vintex':'https://static.martineliferramentas.com.br/image/cache/catalog/marcas/Vintex-600x600.jpg.webp'
+ };
+ const source=official[brand];
+ if(source){
+  const fallback='data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg);
+  return '<img class="brand-picker-logo" src="'+source+'" alt="Logo '+esc(brand)+'" loading="eager" onerror="this.onerror=null;this.src=\''+fallback+'\'">';
+ }
  return '<img class="brand-picker-logo" src="data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg)+'" alt="Logo '+esc(brand)+'" loading="eager">';
 }
 function initStyledSelects(){
