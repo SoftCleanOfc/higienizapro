@@ -137,7 +137,8 @@ module.exports = async function handler(req, res) {
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.2,
-          maxOutputTokens: 1800
+          maxOutputTokens: 4096,
+          responseJsonSchema: schema
         }
       })
     });
@@ -160,15 +161,48 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const outputText = Array.isArray(data.candidates)
-      ? data.candidates.flatMap((candidate) => candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : []).map((part) => part.text || '').join('').trim()
+    const candidate = Array.isArray(data.candidates) ? data.candidates[0] : null;
+    const outputText = candidate && candidate.content && Array.isArray(candidate.content.parts)
+      ? candidate.content.parts.map((part) => typeof part.text === 'string' ? part.text : '').join('').trim()
       : '';
+    if (!outputText) {
+      const reason = candidate && candidate.finishReason ? String(candidate.finishReason) : 'SEM_RESPOSTA';
+      console.error('Gemini returned no text for visual assessment:', reason, data.promptFeedback && data.promptFeedback.blockReason || 'no_block_reason');
+      return res.status(502).json({
+        code: 'AI_EMPTY_RESPONSE',
+        error: reason === 'MAX_TOKENS'
+          ? 'A análise ficou incompleta. Reduza o tamanho da foto e tente novamente.'
+          : 'A IA recebeu a foto, mas não gerou um relatório. Tente novamente.'
+      });
+    }
     let result;
     try {
       result = JSON.parse(outputText.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, ''));
     } catch {
-      console.error('Gemini returned invalid JSON for visual assessment.');
-      return res.status(502).json({ error: 'A IA retornou um relatório inválido. Tente novamente.' });
+      const reason = candidate && candidate.finishReason ? String(candidate.finishReason) : 'UNKNOWN';
+      console.error('Gemini returned invalid JSON for visual assessment:', reason, 'characters:', outputText.length);
+      return res.status(502).json({
+        code: 'AI_INVALID_RESPONSE',
+        error: reason === 'MAX_TOKENS'
+          ? 'A resposta da IA ficou longa demais e foi interrompida. Tente novamente.'
+          : 'A IA respondeu em formato incompleto. Tente novamente.'
+      });
+    }
+    const requiredFields = ['summary', 'fabric_guess', 'fabric_confidence', 'stain_guess', 'stain_confidence', 'soil_level', 'visible_signs', 'recommended_products', 'steps', 'avoid', 'cautions', 'need_more_info'];
+    const missingFields = requiredFields.filter((key) => !(key in result));
+    if (missingFields.length) {
+      console.error('Gemini assessment missing fields:', missingFields.join(', '));
+      return res.status(502).json({ code: 'AI_INCOMPLETE_RESPONSE', error: 'A IA gerou um relatório incompleto. Tente novamente.' });
+    }
+    for (const key of ['visible_signs', 'recommended_products', 'steps', 'avoid', 'cautions', 'need_more_info']) {
+      if (!Array.isArray(result[key])) result[key] = [];
+    }
+    for (const key of ['summary', 'fabric_guess', 'fabric_confidence', 'stain_guess', 'stain_confidence', 'soil_level']) {
+      result[key] = clean(result[key], 500);
+    }
+    if (!result.summary || !result.fabric_guess || !result.stain_guess || !result.steps.length) {
+      console.error('Gemini assessment contains empty critical fields.');
+      return res.status(502).json({ code: 'AI_EMPTY_REPORT', error: 'A IA não conseguiu montar um relatório útil para esta foto. Tente outra imagem mais nítida.' });
     }
 
     const catalogNames = new Set(products.map((p) => p.name.toLocaleLowerCase('pt-BR')));
