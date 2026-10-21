@@ -107,21 +107,47 @@ function populate(){[...new Set(F.map(f=>f.family))].sort((a,b)=>a.localeCompare
 function catalog(){const q=$('fl-search').value.trim().toLocaleLowerCase('pt-BR'),fam=$('fl-family').value;const a=F.filter(f=>(!fam||f.family===fam)&&(!q||(f.name+' '+f.family+' '+f.desc+' '+f.prompt).toLocaleLowerCase('pt-BR').includes(q)));$('fl-count').textContent=a.length+' categorias exibidas • '+F.length+' entradas';$('fl-catalog').innerHTML=a.map(f=>'<button class="fl-item" data-fabric="'+f.id+'"><strong>'+esc(f.name)+'</strong><small>'+esc(f.family)+'</small></button>').join('')||'<div class="fl-muted">Nenhum tecido encontrado.</div>';$('fl-catalog').querySelectorAll('[data-fabric]').forEach(b=>b.addEventListener('click',()=>detail(b.dataset.fabric)))}
 function detail(id){const f=F.find(x=>x.id===id);if(!f)return;$('fl-detail').innerHTML='<h4>'+esc(f.name)+'</h4><div class="fl-muted">'+esc(f.family)+'</div><p style="font-size:12px;margin:8px 0">'+esc(f.desc)+'</p><p class="fl-muted">Descrição visual usada na comparação: '+esc(f.prompt)+'.</p><div class="fl-safety">O nome pode descrever trama, acabamento ou aparência — não necessariamente a composição química. Confirme etiqueta e instruções.</div>'}
 async function getModel(){if(modelPromise)return modelPromise;modelPromise=(async()=>{status('Preparando modelo visual. A primeira carga pode baixar cerca de 150 MB.');progress(8);const mod=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');progress(22);const opts={dtype:'q8',progress_callback:p=>{if(p&&typeof p.progress==='number')progress(22+p.progress*.65)}};let c;if(navigator.gpu){try{c=await mod.pipeline('zero-shot-image-classification','Xenova/clip-vit-base-patch32',{...opts,device:'webgpu'})}catch(e){console.warn('WebGPU indisponível; usando execução padrão',e);c=await mod.pipeline('zero-shot-image-classification','Xenova/clip-vit-base-patch32',opts)}}else c=await mod.pipeline('zero-shot-image-classification','Xenova/clip-vit-base-patch32',opts);progress(100);return c})().catch(e=>{modelPromise=null;throw e});return modelPromise}
-function showMatches(a){matches=a;$('fl-results').innerHTML=a.map((m,i)=>{const f=F.find(x=>x.id===m.id),p=Math.round(m.score*100);return '<div class="fl-match"><strong>'+(i+1)+'. '+esc(f.name)+'</strong><p>'+esc(f.family)+' • pontuação relativa: '+p+'%</p><p>'+esc(f.desc)+'</p><div class="fl-meter"><span style="width:'+Math.min(100,p)+'%"></span></div></div>'}).join('');$('fl-correct-wrap').hidden=false;const top=a[0].score,gap=top-(a[1]?.score||0);status(top>=.16&&gap>=.025?'Correspondência visual mais forte encontrada; confirme composição e acabamento pela etiqueta.':top>=.10?'Resultado inconclusivo: há categorias parecidas. Confira as opções ou envie outra foto.':'Baixa correspondência com a biblioteca. Não force a identificação; confira etiqueta ou ficha técnica.')}
-async function analyze(){if(!file)return;const b=$('fl-analyze');b.disabled=true;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;progress(4);try{status('Carregando o modelo visual…');const c=await getModel();status('Comparando a foto com '+F.length+' categorias…');const bmp=await createImageBitmap(file),can=document.createElement('canvas'),sc=Math.min(1,768/Math.max(bmp.width,bmp.height));can.width=Math.round(bmp.width*sc);can.height=Math.round(bmp.height*sc);can.getContext('2d').drawImage(bmp,0,0,can.width,can.height);bmp.close?.();const labels=F.map(f=>f.prompt),out=await c(can,labels);const a=(Array.isArray(out)?out:[]).map(o=>{let i=labels.indexOf(o.label);if(i<0)i=labels.findIndex(x=>x===o.label||x.includes(o.label)||o.label.includes(x));return i>=0?{id:F[i].id,score:Number(o.score)||0}:null}).filter(Boolean).sort((x,y)=>y.score-x.score).slice(0,5);if(!a.length)throw Error('O modelo não retornou correspondências. Tente uma foto mais nítida.');showMatches(a);progress(100)}catch(e){console.error('Falha na análise local',e);progress(0);status('Não foi possível concluir a análise local. '+(e?.message||'Confira a conexão e tente novamente.'))}finally{b.disabled=false}}
+function showMatches(a){matches=a.slice(0,1);const m=matches[0],f=F.find(x=>x.id===m.id);$('fl-results').innerHTML='<div class="fl-match"><strong>Melhor identificação visual: '+esc(f.name)+'</strong><p>'+esc(f.family)+'</p><p>'+esc(f.desc)+'</p><p><b>Atenção:</b> esta é uma estimativa visual, não uma confirmação da composição. Pode não estar 100% correta.</p></div>';$('fl-correct-wrap').hidden=false;status('A biblioteca escolheu apenas o tecido mais parecido. Confira a etiqueta/ficha técnica e faça teste em área escondida antes de limpar.')}
+async function analyze(){if(!file)return;const b=$('fl-analyze');b.disabled=true;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;progress(4);try{status('Carregando o modelo visual…');status('Comparando textura, trama e superfície em mais de uma descrição…');const a=await classifyPhoto(file);showMatches(a);progress(100)}catch(e){console.error('Falha na análise local',e);progress(0);status('Não foi possível concluir a análise local. '+(e?.message||'Confira a conexão e tente novamente.'))}finally{b.disabled=false}}
 function clear(){file=null;if(url){URL.revokeObjectURL(url);url=null}$('fl-photo').value='';$('fl-preview').removeAttribute('src');$('fl-preview').style.display='none';$('fl-analyze').disabled=true;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;progress(0);status('Escolha uma foto para começar.')}
 function saveCorrection(){if(!matches[0])return;let a=[];try{a=JSON.parse(localStorage.getItem('higienizapro_fabric_corrections')||'[]')}catch(e){}a.push({predicted:matches[0].id,corrected:$('fl-correction').value,createdAt:new Date().toISOString(),imageName:file?.name||'',model:'clip-vit-base-patch32',note:'Correção do usuário; revisar antes de treinamento.'});try{localStorage.setItem('higienizapro_fabric_corrections',JSON.stringify(a.slice(-300)));status('Correção salva neste aparelho para revisão futura; o modelo não foi retreinado.')}catch(e){status('Não foi possível salvar a correção neste aparelho.')}}
 function wire(){$('fl-search').addEventListener('input',catalog);$('fl-family').addEventListener('change',catalog);$('fl-photo').addEventListener('change',e=>{file=e.target.files&&e.target.files[0]||null;if(!file)return;if(!file.type.startsWith('image/')){clear();status('Escolha uma imagem válida.');return}if(file.size>15*1024*1024){clear();status('A foto excede 15 MB. Escolha uma imagem menor.');return}if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(file);$('fl-preview').src=url;$('fl-preview').style.display='block';$('fl-analyze').disabled=false;$('fl-results').innerHTML='';$('fl-correct-wrap').hidden=true;status('Foto pronta. A análise será executada localmente.')});$('fl-analyze').addEventListener('click',analyze);$('fl-clear').addEventListener('click',clear);$('fl-save-correction').addEventListener('click',saveCorrection)}
 async function classifyPhoto(file){
- const c=await getModel();
- const bmp=await createImageBitmap(file),can=document.createElement('canvas'),sc=Math.min(1,768/Math.max(bmp.width,bmp.height));
- can.width=Math.max(1,Math.round(bmp.width*sc));can.height=Math.max(1,Math.round(bmp.height*sc));
- const ctx=can.getContext('2d');if(!ctx)throw new Error('Não foi possível preparar a imagem.');
- ctx.drawImage(bmp,0,0,can.width,can.height);bmp.close?.();
- const labels=F.map(f=>f.prompt),out=await c(can,labels);
- const a=(Array.isArray(out)?out:[]).map(o=>{let i=labels.indexOf(o.label);if(i<0)i=labels.findIndex(x=>x===o.label||x.includes(o.label)||o.label.includes(x));return i>=0?{id:F[i].id,score:Number(o.score)||0}:null}).filter(Boolean).sort((x,y)=>y.score-x.score).slice(0,5);
- if(!a.length)throw new Error('O modelo não encontrou correspondências. Tente uma foto mais nítida.');
- return a;
+ const model=await getModel();
+ const bmp=await createImageBitmap(file);
+ const scale=Math.min(1,768/Math.max(bmp.width,bmp.height));
+ const whole=document.createElement('canvas');
+ whole.width=Math.max(1,Math.round(bmp.width*scale));whole.height=Math.max(1,Math.round(bmp.height*scale));
+ const wholeCtx=whole.getContext('2d');if(!wholeCtx)throw new Error('Não foi possível preparar a imagem.');
+ wholeCtx.drawImage(bmp,0,0,whole.width,whole.height);
+ // Segunda visão: recorte central para reduzir o peso do fundo e aproximar a análise da textura.
+ const side=Math.max(1,Math.floor(Math.min(bmp.width,bmp.height)*.72));
+ const crop=document.createElement('canvas');crop.width=512;crop.height=512;
+ const cropCtx=crop.getContext('2d');if(!cropCtx)throw new Error('Não foi possível preparar o recorte da imagem.');
+ cropCtx.drawImage(bmp,Math.floor((bmp.width-side)/2),Math.floor((bmp.height-side)/2),side,side,0,0,512,512);bmp.close?.();
+ const labels=[],map=[];
+ F.forEach(f=>{
+  const variants=[
+   f.prompt,
+   'close-up macro photograph of '+f.name+' upholstery fabric texture',
+   'detailed sofa upholstery surface showing the weave, fibers and pile of '+f.name
+  ];
+  variants.forEach((label,j)=>{labels.push(label);map.push({id:f.id,variant:j})});
+ });
+ const scoreImage=async image=>{
+  const out=await model(image,labels),best=new Map();
+  (Array.isArray(out)?out:[]).forEach(o=>{
+   const i=labels.indexOf(o.label);if(i<0)return;
+   const id=map[i].id,score=Number(o.score)||0;
+   if(!best.has(id)||score>best.get(id))best.set(id,score);
+  });
+  return best;
+ };
+ const [fullScores,cropScores]=await Promise.all([scoreImage(whole),scoreImage(crop)]);
+ const ranked=F.map(f=>({id:f.id,score:((fullScores.get(f.id)||0)+(cropScores.get(f.id)||0))/2}))
+  .sort((x,y)=>y.score-x.score);
+ if(!ranked.length)throw new Error('O modelo não encontrou uma correspondência. Tente uma foto mais nítida.');
+ return ranked.slice(0,2);
 }
 function scannerConfidence(score,gap){if(score>=.16&&gap>=.025)return 'moderada';if(score>=.10)return 'baixa';return 'muito baixa'}
 function connectScannerToLocalLibrary(){
@@ -135,12 +161,12 @@ function connectScannerToLocalLibrary(){
   result?.classList.add('show');if(empty)empty.style.display='none';if(summary)summary.textContent='Preparando o modelo visual no aparelho. A primeira carga pode baixar cerca de 150 MB.';if(details)details.hidden=true;if(products)products.innerHTML='';if(next)next.textContent='Aguarde a comparação local.';
   try{
    const a=await classifyPhoto(photo),top=F.find(f=>f.id===a[0].id),second=a[1]||{score:0},confidence=scannerConfidence(a[0].score,a[0].score-second.score);
-   const confidenceLabel=confidence==='moderada'?'moderada':confidence==='baixa'?'baixa':'muito baixa';
-   if(summary)summary.textContent='Comparação visual local concluída. Correspondência mais alta: '+top.name+'. Confiança '+confidenceLabel+'. Isso não confirma a composição do tecido.';
-   if(details){details.innerHTML='<div class="ai-report-panel"><h4>Possíveis tecidos encontrados</h4>'+a.map((m,i)=>{const f=F.find(x=>x.id===m.id);return '<p><b>'+(i+1)+'. '+esc(f.name)+'</b> — pontuação relativa '+Math.round(m.score*100)+'%<br><span>'+esc(f.desc)+'</span></p>'}).join('')+'</div><div class="ai-report-panel"><h4>Limitações da identificação</h4><p>As pontuações indicam semelhança relativa entre as opções deste catálogo. Não são probabilidades calibradas, nem identificam com certeza a composição química ou o acabamento.</p><p>Confirme pela etiqueta ou ficha técnica do estofado antes de escolher um procedimento.</p></div>';details.hidden=false}
+   const confidenceLabel=confidence==='moderada'?'mais compatível visualmente':confidence==='baixa'?'estimativa incerta':'estimativa pouco conclusiva';
+   if(summary)summary.textContent='Tecido mais compatível visualmente: '+top.name+'. '+confidenceLabel+'. A identificação pode não estar 100% correta.';
+   if(details){details.innerHTML='<div class="ai-report-panel"><h4>Identificação mais provável</h4><p><b>'+esc(top.name)+'</b></p><p>'+esc(top.desc)+'</p><p>Esta é a melhor correspondência visual encontrada pela biblioteca, não uma confirmação da composição. Tecidos diferentes podem ter aparência muito parecida.</p><p>Confirme pela etiqueta ou ficha técnica do estofado antes de escolher um procedimento.</p></div>';details.hidden=false}
    if(products)products.innerHTML='<h4>Produtos do catálogo</h4><p>Nenhum produto foi recomendado automaticamente. A biblioteca identificou apenas semelhanças visuais; selecione um produto compatível com a etiqueta e consulte a ficha técnica e a diluição cadastrada.</p>';
    if(next)next.innerHTML='<b>Próximo passo:</b> '+(confidence==='moderada'?'Confira se a trama, o brilho e o toque correspondem à primeira opção. ': 'O resultado é incerto; faça outra foto de perto, com luz natural, e confira a etiqueta. ')+'Antes de aplicar qualquer produto, faça teste de compatibilidade e solidez da cor em área escondida e espere secar completamente.';
-   if(typeof scanAnalysis!=='undefined')scanAnalysis={source:'local-fabric-library',fabric_guess:top.name,fabric_confidence:confidence,summary:summary?.textContent||'',matches:a.map(m=>({name:F.find(f=>f.id===m.id).name,score:m.score})),recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta e espere secar completamente.']};
+   if(typeof scanAnalysis!=='undefined')scanAnalysis={source:'local-fabric-library',fabric_guess:top.name,fabric_confidence:confidence,summary:summary?.textContent||'',matches:[{name:top.name}],recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta e espere secar completamente.']};
    if(typeof toast==='function')toast('Análise local concluída sem chamar a API.');
    result?.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){console.error('Análise local de tecido falhou',e);if(summary)summary.textContent='Não foi possível concluir a análise local.';if(next)next.textContent=(e&&e.message?e.message:'Erro no modelo visual.')+' Verifique a conexão para baixar o modelo e tente novamente.';if(typeof toast==='function')toast(e?.message||'Falha na análise local.')}
