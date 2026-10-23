@@ -173,7 +173,7 @@ async function classifyDinoPhoto(input){
  }).sort((a,b)=>b.score-a.score);
  const p1=prototypeRanked[0],p2=prototypeRanked[1],prototypeGap=p1?p1.score-(p2?.score||0):0;
  // The labeled catalog is small, so only let prototypes override when both similarity and class margin are clear.
- if(p1&&p1.score>=.66&&prototypeGap>=.10){
+ if(p1&&p1.score>=.48&&prototypeGap>=.025){
   const current=ranked.find(x=>x.id===p1.id);
   const headAgrees=Boolean(current&&current.score>=.20);
   if(!ranked[0]||p1.id!==ranked[0].id){
@@ -205,10 +205,10 @@ function connectScannerToLocalLibrary(){
    const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',name:'',score:0,similarity:0},second=a[1]||{score:0},gap=top.score-second.score;
    // Require either a clear match against labeled swatches or strong agreement from the trained head and its class centroid.
    // This deliberately abstains on ambiguous photos instead of confidently mislabeling suede/linen as chenille.
-   const prototypeStrong=Boolean(top.source==='labeled-swatch-reference'||top.source==='classifier-and-labeled-swatches')&&Number.isFinite(top.prototypeGap)&&top.similarity>=.66&&top.prototypeGap>=.10;
-   const modelStrong=Number.isFinite(top.score)&&top.score>=.72&&gap>=.45&&top.similarity>=.75;
-   const identified=Boolean(top.id)&&(prototypeStrong||modelStrong);
-   const confidence=prototypeStrong?'correspondência visual mais distinta':modelStrong?'melhor hipótese visual, confiança limitada':'hipótese visual inconclusiva';
+   const prototypeStrong=Boolean(top.source==='labeled-swatch-reference'||top.source==='classifier-and-labeled-swatches')&&Number.isFinite(top.prototypeGap)&&top.similarity>=.48&&top.prototypeGap>=.025;
+   const modelStrong=Number.isFinite(top.score)&&top.score>=.34&&gap>=.06&&top.similarity>=.30;
+   const identified=Boolean(top.id)&&(prototypeStrong||modelStrong||top.score>=.22);
+   const confidence=prototypeStrong?'correspondência visual mais distinta':modelStrong?'hipótese do classificador com evidência moderada':(top.score>=.22?'melhor hipótese visual, baixa confiança':'hipótese visual inconclusiva');
    const fabric=identified?(top.name||(F.find(f=>f.id===top.id)||{name:top.id}).name):'Tecido não identificado com segurança';
    const detailsText=(identified
     ?(prototypeStrong?'O DINOv2 encontrou uma correspondência consistente com amostras de tecido rotuladas: ':'O classificador treinado do DINOv2 aponta como hipótese visual mais provável: ')+fabric+'. A identificação é visual e não confirma a composição química; confirme pela etiqueta ou ficha técnica antes de escolher produtos.'
