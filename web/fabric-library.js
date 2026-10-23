@@ -173,7 +173,7 @@ async function classifyDinoPhoto(input){
  }).sort((a,b)=>b.score-a.score);
  const p1=prototypeRanked[0],p2=prototypeRanked[1],prototypeGap=p1?p1.score-(p2?.score||0):0;
  // The labeled catalog is small, so only let prototypes override when both similarity and class margin are clear.
- if(p1&&p1.score>=.66&&prototypeGap>=.08){
+ if(p1&&p1.score>=.66&&prototypeGap>=.10){
   const current=ranked.find(x=>x.id===p1.id);
   const headAgrees=Boolean(current&&current.score>=.20);
   if(!ranked[0]||p1.id!==ranked[0].id){
