@@ -134,7 +134,7 @@ function connectScannerToLocalLibrary(){
    for(const r of seed.references){if(!seen.has(r.name))addReferenceVector({...r,createdAt:new Date().toISOString(),kind:'public-seed-textile-sample'});seen.add(r.name)}
    refs=loadReferenceVectors();
    const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',score:0},second=a[1]||{score:0},gap=top.score-second.score,confidence=scannerConfidence(top.score,gap);
-   // DINOv2 local only: no Gemini, no network AI fallback, no API calls.
+   // Identificação executada exclusivamente pelo modelo local DINOv2.
    const identified=confidence==='correspondência visual mais distinta';
    const fabric=identified?(F.find(f=>f.id===top.id)||{name:top.id,desc:'Correspondência visual na biblioteca local.'}).name:'Tecido não identificado';
    const detailsText=identified
