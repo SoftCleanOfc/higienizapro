@@ -135,7 +135,7 @@ function connectScannerToLocalLibrary(){
    if(typeof scanAnalysis!=='undefined')scanAnalysis={source:'dinov2-multiscale-local',fabric_guess:top.name,fabric_confidence:confidence,summary:summary?.textContent||'',matches:[{name:top.name}],recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta e espere secar completamente.']};
    if(typeof toast==='function')toast('Análise local concluída sem chamar a API.');
    result?.scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){console.error('Análise local de tecido falhou',e);if(summary)summary.textContent='Não foi possível concluir a análise local.';if(next)next.textContent=(e&&e.message?e.message:'Erro no modelo visual.')+' Verifique a conexão para baixar o modelo e tente novamente.';if(typeof toast==='function')toast(e?.message||'Falha na análise local.')}
+  }catch(e){console.error('Análise local de tecido falhou',e);status('Falha na análise DINOv2: '+(e&&e.message?e.message:'erro desconhecido'));progress(0);if(summary)summary.textContent='Não foi possível concluir a análise local.';if(next)next.textContent=(e&&e.message?e.message:'Erro no modelo visual.')+' Verifique a conexão para baixar o modelo e tente novamente.';if(typeof toast==='function')toast(e?.message||'Falha na análise local.')}
   finally{btn.disabled=false;btn.textContent=original}
  };
 }
