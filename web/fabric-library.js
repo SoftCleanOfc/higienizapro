@@ -135,8 +135,8 @@ function connectScannerToLocalLibrary(){
   btn.disabled=true;progress(2);status('Preparando scanner óptico…');
   try{
    const seed=await fetchDinoSeed();if(!Array.isArray(seed.references)||!seed.references.length)throw new Error('A biblioteca visual está vazia.');
-   let refs=loadReferenceVectors();const allReferences=[...seed.references,...(seed.sceneReferences||[])],seen=new Set(refs.filter(r=>r.kind==='public-seed-textile-sample'||r.kind==='sofa-scene').map(r=>r.name)),pending=[];
-   for(const r of allReferences){if(!seen.has(r.name)){pending.push({...r,createdAt:new Date().toISOString(),kind:r.kind==='sofa-scene'?'sofa-scene':'public-seed-textile-sample'});seen.add(r.name)}}
+   let refs=loadReferenceVectors();const allReferences=[...seed.references,...(seed.sceneReferences||[])],seen=new Set(refs.filter(r=>r.kind==='public-seed-textile-sample'||r.kind==='sofa-scene'||r.kind==='upholstery-style').map(r=>r.name)),pending=[];
+   for(const r of allReferences){if(!seen.has(r.name)){pending.push({...r,createdAt:new Date().toISOString(),kind:r.kind==='sofa-scene'?'sofa-scene':r.kind==='upholstery-style'?'upholstery-style':'public-seed-textile-sample'});seen.add(r.name)}}
    addReferenceVectors(pending);refs=loadReferenceVectors();
    const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',score:0},second=a[1]||{score:0},gap=top.score-second.score,confidence=scannerConfidence(top.score,gap);
    // Identificação executada exclusivamente pelo modelo local DINOv2.
