@@ -133,27 +133,13 @@ function connectScannerToLocalLibrary(){
    let refs=loadReferenceVectors();const seen=new Set(refs.filter(r=>r.kind==='public-seed-textile-sample').map(r=>r.name));
    for(const r of seed.references){if(!seen.has(r.name))addReferenceVector({...r,createdAt:new Date().toISOString(),kind:'public-seed-textile-sample'});seen.add(r.name)}
    refs=loadReferenceVectors();
-   const dinoResult=await classifyDinoPhoto(photo);
-   let identified=false,fabric='Tecido não identificado',confidence='inconclusiva';
-   let detailsText='A análise local foi concluída, mas a biblioteca visual ainda não tem referências específicas suficientes de estofados para confirmar o tecido. Tentando uma segunda leitura visual.';
-   // As referências locais iniciais são amostras de fibras genéricas, não uma base representativa de estofados. Não transformar "lã" ou outra classe limitada em resposta definitiva.
-   try{
-    if(typeof imageFileToDataUrl==='function'){
-     status('Conferindo a imagem com inteligência visual…');progress(98);
-     const image=await imageFileToDataUrl(photo);
-     const aiResponse=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,fabric:'não identificado pelo profissional',stain:'não informado',notes:'Este scanner tem uma única função: identificar visualmente o tipo de tecido do estofado na imagem. Priorize trama, superfície e aparência. Não recomende produtos, diluições ou procedimentos de limpeza. Se não for possível distinguir, informe tecido não identificado e confiança baixa/indeterminada. Não confunda aparência de linho ou lã com confirmação da composição da fibra.',products:[]})});
-     const aiPayload=await aiResponse.json().catch(()=>({}));
-     const ai=aiPayload&&aiPayload.result;
-     const guess=String(ai&&ai.fabric_guess||'').trim(),level=String(ai&&ai.fabric_confidence||'indeterminada').toLowerCase();
-     const unknown=/não identific|indeterminad|desconhecid|não é possível|incerto|inconclusiv/i.test(guess);
-     if(aiResponse.ok&&guess&&!unknown&&(level==='alta'||level==='média')){
-      identified=true;fabric=guess;confidence='IA visual · confiança '+level;
-      detailsText='A leitura visual sugere '+fabric+'. É uma estimativa pela aparência da superfície, não uma confirmação da composição da fibra. Confira a etiqueta ou a ficha técnica do estofado.';
-     }else{
-      detailsText='A imagem não permitiu distinguir o tecido com segurança. A IA visual não encontrou evidência suficiente para apresentar um nome confiável. Tente uma foto mais próxima da trama, com iluminação uniforme e sem filtros.';
-     }
-    }
-   }catch(aiError){console.warn('Segunda leitura visual indisponível; mantendo resultado inconclusivo.',aiError);detailsText='Não foi possível confirmar o tecido com segurança. A base local ainda é limitada e a segunda leitura visual não respondeu. Tente novamente com uma foto mais próxima da trama.'}
+   const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',score:0},second=a[1]||{score:0},gap=top.score-second.score,confidence=scannerConfidence(top.score,gap);
+   // DINOv2 local only: no Gemini, no network AI fallback, no API calls.
+   const identified=confidence==='correspondência visual mais distinta';
+   const fabric=identified?(F.find(f=>f.id===top.id)||{name:top.id,desc:'Correspondência visual na biblioteca local.'}).name:'Tecido não identificado';
+   const detailsText=identified
+    ?'A análise DINOv2 encontrou uma correspondência visual mais distinta com '+fabric+'. Isso é uma estimativa baseada nas referências locais, não uma confirmação da composição da fibra. Confira a etiqueta ou a ficha técnica.'
+    :'O DINOv2 não encontrou uma correspondência visual suficientemente distinta para nomear o tecido com segurança. A biblioteca local ainda é limitada e pode não representar todos os tecidos de estofados. Tente uma foto próxima da trama, com luz uniforme e sem filtros.';
    if(name)name.textContent=fabric;
    if(copy)copy.textContent=detailsText;
    if(confidenceEl)confidenceEl.textContent=identified?confidence.toUpperCase():'RESULTADO INCONCLUSIVO';
@@ -162,7 +148,7 @@ function connectScannerToLocalLibrary(){
    if(details){details.innerHTML='<div class="ai-report-panel"><h4>Resultado do scanner</h4><p><b>'+esc(fabric)+'</b></p><p>'+esc(detailsText)+'</p><p>Foram comparados '+dinoResult.viewsAnalyzed+' enquadramentos da imagem. A identificação continua sendo visual e deve ser conferida pela etiqueta ou ficha técnica.</p></div>';details.hidden=false}
    if(products)products.innerHTML='';
    if(next)next.textContent=identified?'Confirme a etiqueta ou a ficha técnica antes de escolher um processo de limpeza.':'Tente uma foto mais próxima da trama, com iluminação uniforme e sem filtros. Confirme pela etiqueta ou ficha técnica antes de escolher o processo.';
-   if(typeof scanAnalysis!=='undefined')scanAnalysis={source:identified?'dinov2-gemini-visual':'dinov2-visual-inconclusive',fabric_guess:fabric,fabric_confidence:identified?confidence:'inconclusiva',summary:detailsText,matches:identified?[{name:fabric}]:[],recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta antes de aplicar qualquer produto.']};
+   if(typeof scanAnalysis!=='undefined')scanAnalysis={source:'dinov2-multiscale-local',fabric_guess:fabric,fabric_confidence:identified?confidence:'inconclusiva',summary:detailsText,matches:identified?[{name:fabric}]:[],recommended_products:[],steps:['Confirme a etiqueta ou ficha técnica.','Faça teste em área discreta antes de aplicar qualquer produto.']};
    progress(100);status('Análise concluída');document.body.classList.remove('dino-scanning');document.body.classList.add('dino-result-ready');
    if(typeof toast==='function'&&identified)toast('Análise visual concluída.');
   }catch(e){
