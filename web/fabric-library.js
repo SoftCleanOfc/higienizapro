@@ -141,7 +141,7 @@ async function classifyDinoPhoto(input){
  for(const view of vectors){const logits=dinoClassifierLogits(view.v,head);for(let i=0;i<aggregate.length;i++)aggregate[i]+=(logits[i]||0)*view.weight;totalWeight+=view.weight}
  const probabilities=stableSoftmax(aggregate.map(x=>x/(totalWeight||1)));
  const centroidScale=head.centroidScale||head.quantizationScale||10000;
- const similarities=(head.centroids||[]).map(row=>{let s=0;for(let j=0;j<row.length&&j<vectors[0].v.length;j++){let avg=0;for(const view of vectors)avg+=view.weight*view.v[j];s+=(row[j]/centroidScale)*(avg/(totalWeight||1))}return s});
+ const queryAverage=new Array(vectors[0].v.length).fill(0);for(const view of vectors)for(let j=0;j<queryAverage.length;j++)queryAverage[j]+=view.weight*view.v[j];const normalizedQuery=unitVector(queryAverage);const similarities=(head.centroids||[]).map(row=>{let s=0;for(let j=0;j<row.length&&j<normalizedQuery.length;j++)s+=(row[j]/centroidScale)*normalizedQuery[j];return s});
  const ranked=head.classes.map((id,i)=>({id,name:(head.names&&head.names[id])||id,score:probabilities[i]||0,similarity:similarities[i]||0})).sort((a,b)=>b.score-a.score);
  return {matches:ranked.slice(0,3),vector:vectors[1]?.v||vectors[0].v,viewsAnalyzed:vectors.length,sofaSceneDetected:sofaSceneScore>=.58,sofaSceneScore}
 }
