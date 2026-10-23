@@ -146,10 +146,42 @@ async function classifyDinoPhoto(input){
  const centroidScale=head.centroidScale||head.quantizationScale||10000;
  const queryAverage=new Array(vectors[0].v.length).fill(0);for(const view of vectors)for(let j=0;j<queryAverage.length;j++)queryAverage[j]+=view.weight*view.v[j];const normalizedQuery=unitVector(queryAverage);const similarities=(head.centroids||[]).map(row=>{let s=0;for(let j=0;j<row.length&&j<normalizedQuery.length;j++)s+=(row[j]/centroidScale)*normalizedQuery[j];return s});
  let ranked=head.classes.map((id,i)=>({id,name:(head.names&&head.names[id])||id,score:probabilities[i]||0,similarity:similarities[i]||0})).sort((a,b)=>b.score-a.score);
- const prototypeOnlyNames={boucle:'Bouclé','suede-microfibra':'Suede / microfibra'};const prototypeScores={};
- for(const proto of dinoPrototypes){if(!Object.prototype.hasOwnProperty.call(prototypeOnlyNames,proto.label))continue;let score=0;for(const view of vectors){let sim=0;for(let j=0;j<view.v.length&&j<proto.vector.length;j++)sim+=view.v[j]*proto.vector[j];score+=view.weight*sim}score/=totalWeight||1;(prototypeScores[proto.label]||(prototypeScores[proto.label]=[])).push(score)}
- const extra=Object.entries(prototypeScores).map(([id,values])=>({id,name:prototypeOnlyNames[id],score:values.sort((a,b)=>b-a).slice(0,id==='boucle'?2:1).reduce((a,b)=>a+b,0)/Math.min(values.length,id==='boucle'?2:1),similarity:values[0]||0})).sort((a,b)=>b.score-a.score);
- if(extra.length&&extra[0].score>=.78&&(!extra[1]||extra[0].score-extra[1].score>=.08)){const e=extra[0];ranked=[{...e,source:'labeled-swatch-reference'},...ranked.filter(x=>x.id!==e.id)]}
+ // Conservative prototype ensemble: compare the prediction against the labeled upholstery swatches,
+ // particularly suede and linen-effect fabrics that are underrepresented in the supervised head.
+ const prototypeNames={
+  boucle:'Bouclé',
+  'suede-microfibra':'Suede / microfibra (aparência compatível)',
+  linho:'Linho / efeito linho (pode ser sintético)',
+  chenille:'Chenille',
+  veludo:'Veludo',
+  'veludo-cotele':'Veludo cotelê',
+  'tecido-felpudo':'Tecido felpudo',
+  'revestimento-liso':'Revestimento liso',
+  outro:'Textura não categorizada'
+ };
+ const prototypeScores={};
+ for(const proto of dinoPrototypes){
+  if(!Object.prototype.hasOwnProperty.call(prototypeNames,proto.label))continue;
+  let score=0;
+  for(const view of vectors){let sim=0;for(let j=0;j<view.v.length&&j<proto.vector.length;j++)sim+=view.v[j]*proto.vector[j];score+=view.weight*sim}
+  score/=totalWeight||1;
+  (prototypeScores[proto.label]||(prototypeScores[proto.label]=[])).push(score);
+ }
+ const prototypeRanked=Object.entries(prototypeScores).map(([id,values])=>{
+  const sorted=values.slice().sort((a,b)=>b-a),take=id==='suede-microfibra'?1:Math.min(2,sorted.length);
+  return {id,name:prototypeNames[id],score:sorted.slice(0,take).reduce((a,b)=>a+b,0)/take,similarity:sorted[0]||0,source:'labeled-swatch-reference',support:values.length};
+ }).sort((a,b)=>b.score-a.score);
+ const p1=prototypeRanked[0],p2=prototypeRanked[1],prototypeGap=p1?p1.score-(p2?.score||0):0;
+ // The labeled catalog is small, so only let prototypes override when both similarity and class margin are clear.
+ if(p1&&p1.score>=.66&&prototypeGap>=.08){
+  const current=ranked.find(x=>x.id===p1.id);
+  const headAgrees=Boolean(current&&current.score>=.20);
+  if(!ranked[0]||p1.id!==ranked[0].id){
+   ranked=[{...p1,score:Math.max(p1.score,current?.score||0),prototypeGap,headAgrees},...ranked.filter(x=>x.id!==p1.id)];
+  }else{
+   ranked[0]={...ranked[0],similarity:p1.score,prototypeGap,headAgrees:true,source:'classifier-and-labeled-swatches'};
+  }
+ }
  return {matches:ranked.slice(0,3),vector:vectors[1]?.v||vectors[0].v,viewsAnalyzed:vectors.length,sofaSceneDetected:sofaSceneScore>=.58,sofaSceneScore}
 }
 async function seedReferenceLibrary(){const btn=$('fl-seed-references');btn.disabled=true;try{$('fl-reference-status').textContent='Carregando as referências iniciais…';status('Carregando amostras reais de estofados e preparando o classificador DINOv2 treinado.');const data=await fetchDinoSeed();if(!Array.isArray(data.references)||!data.references.length)throw new Error('O arquivo de referências está vazio.');const allReferences=[...data.references,...(data.sceneReferences||[])],existing=loadReferenceVectors(),seen=new Set(existing.filter(r=>r.kind==='public-seed-textile-sample'||r.kind==='sofa-scene'||r.kind==='upholstery-style').map(r=>r.name)),pending=[];for(const r of allReferences){if(seen.has(r.name))continue;pending.push({...r,createdAt:new Date().toISOString(),kind:r.kind==='sofa-scene'?'sofa-scene':r.kind==='upholstery-style'?'upholstery-style':'public-seed-textile-sample'});seen.add(r.name)}addReferenceVectors(pending);const added=pending.length;$('fl-reference-status').textContent='Biblioteca inicial carregada: '+added+' nova(s) referência(s). '+referenceSummary();status('Referências visuais carregadas. O classificador supervisionado foi treinado separadamente; adicionar exemplos neste aparelho não altera seus pesos.')}catch(e){console.error(e);$('fl-reference-status').textContent='Não foi possível carregar a biblioteca: '+(e?.message||'erro');status('Falha ao carregar as referências iniciais. Confira a conexão e tente novamente.')}finally{btn.disabled=false}}async function addReferenceFromUpload(){const input=$('fl-reference-photo'),file=input.files&&input.files[0];if(!file){$('fl-reference-status').textContent='Escolha uma foto de referência primeiro.';return}if(!file.type.startsWith('image/')||file.size>15*1024*1024){$('fl-reference-status').textContent='Escolha uma imagem válida de até 15 MB.';return}const b=$('fl-add-reference');b.disabled=true;try{const label=$('fl-reference-label').value;if(!label)throw new Error('Selecione o nome confirmado do tecido.');status('Extraindo características visuais da foto de referência…');const vector=await dinoEmbedding(file);addReferenceVector({label,vector,name:file.name||'referência',createdAt:new Date().toISOString()});$('fl-reference-status').textContent=referenceSummary();input.value='';status('Exemplo rotulado adicionado ao DINOv2 neste aparelho. Os pesos originais do modelo não foram alterados.')}catch(e){console.error(e);$('fl-reference-status').textContent=e?.message||'Não foi possível adicionar o exemplo.'}finally{b.disabled=false}}
