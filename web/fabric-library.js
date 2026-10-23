@@ -142,9 +142,9 @@ function connectScannerToLocalLibrary(){
    // Identificação executada exclusivamente pelo modelo local DINOv2.
    const identified=Number.isFinite(top.score)&&top.score>=.40;
    const fabric=identified?(F.find(f=>f.id===top.id)||{name:top.id,desc:'Correspondência visual na biblioteca local.'}).name:'Tecido não identificado';
-   const detailsText=identified
-    ?(confidence==='correspondência visual mais distinta'?'O DINOv2 encontrou uma correspondência visual mais distinta com ':'O DINOv2 encontrou como hipótese visual mais próxima ')+fabric+'. É uma estimativa preliminar: a biblioteca de referência ainda é pequena e não cobre a variedade de tecidos de estofados. A aparência não confirma a composição da fibra; confira a etiqueta ou a ficha técnica.'
-    :'O DINOv2 não encontrou uma correspondência suficientemente útil entre as poucas referências locais disponíveis. A biblioteca atual não representa a variedade de tecidos de estofados. Tente uma foto próxima da trama, com luz uniforme e sem filtros.';
+   const detailsText=(identified
+    ?(confidence==='correspondência visual mais distinta'?'O DINOv2 encontrou uma correspondência visual mais distinta com ':'O DINOv2 encontrou como hipótese visual mais próxima ')+fabric+'. É uma estimativa preliminar: a biblioteca contém referências de fibras naturais, mas não cobre todos os acabamentos e tecidos de estofados. A aparência não confirma a composição da fibra; confira a etiqueta ou a ficha técnica.'
+    :'O DINOv2 não encontrou uma correspondência suficientemente útil entre as referências disponíveis. A base atual prioriza fibras naturais e ainda não cobre toda a variedade de tecidos de estofados. Tente uma foto próxima da trama, com luz uniforme e sem filtros.')+(dinoResult.sofaSceneDetected?' A imagem parece mostrar um sofá em visão geral; o scanner examinou uma grade adicional de 9 recortes para procurar a trama. Uma foto próxima ainda ajuda a confirmar o tecido.':'');
    if(name)name.textContent=fabric;
    if(copy)copy.textContent=detailsText;
    if(confidenceEl)confidenceEl.textContent=identified?(confidence==='correspondência visual mais distinta'?'CORRESPONDÊNCIA MAIS DISTINTA':'HIPÓTESE VISUAL · CONFIANÇA LIMITADA'):'RESULTADO INCONCLUSIVO';
