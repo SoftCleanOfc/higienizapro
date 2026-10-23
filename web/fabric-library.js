@@ -198,17 +198,21 @@ function connectScannerToLocalLibrary(){
   if(card)card.classList.remove('show');if(result)result.classList.remove('show');if(empty)empty.style.display='none';if(summary)summary.textContent='';if(details)details.hidden=true;if(products)products.innerHTML='';if(next)next.textContent='';
   btn.disabled=true;progress(2);status('Preparando scanner óptico…');
   try{
-   const seed=await fetchDinoSeed();if(!Array.isArray(seed.references)||!seed.references.length)throw new Error('A biblioteca visual está vazia.');dinoClassifier=seed.classifier;dinoPrototypes=seed.prototypes||[];dinoPrototypes=seed.prototypes||[];
+   const seed=await fetchDinoSeed();if(!Array.isArray(seed.references)||!seed.references.length)throw new Error('A biblioteca visual está vazia.');dinoClassifier=seed.classifier;dinoPrototypes=seed.prototypes||[];
    let refs=loadReferenceVectors();const allReferences=[...seed.references,...(seed.sceneReferences||[])],seen=new Set(refs.filter(r=>r.kind==='public-seed-textile-sample'||r.kind==='sofa-scene'||r.kind==='upholstery-style').map(r=>r.name)),pending=[];
    for(const r of allReferences){if(!seen.has(r.name)){pending.push({...r,createdAt:new Date().toISOString(),kind:r.kind==='sofa-scene'?'sofa-scene':r.kind==='upholstery-style'?'upholstery-style':'public-seed-textile-sample'});seen.add(r.name)}}
    addReferenceVectors(pending);refs=loadReferenceVectors();
-   const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',name:'',score:0,similarity:0},second=a[1]||{score:0},gap=top.score-second.score,confidence=scannerConfidence(top.score,gap,top.similarity);
-   // Identificação executada exclusivamente pelo modelo local DINOv2.
-   const identified=Number.isFinite(top.score)&&Boolean(top.id)&&top.score>=.075;
+   const dinoResult=await classifyDinoPhoto(photo),a=dinoResult.matches||[],top=a[0]||{id:'',name:'',score:0,similarity:0},second=a[1]||{score:0},gap=top.score-second.score;
+   // Require either a clear match against labeled swatches or strong agreement from the trained head and its class centroid.
+   // This deliberately abstains on ambiguous photos instead of confidently mislabeling suede/linen as chenille.
+   const prototypeStrong=Boolean(top.source==='labeled-swatch-reference'||top.source==='classifier-and-labeled-swatches')&&Number.isFinite(top.prototypeGap)&&top.similarity>=.66&&top.prototypeGap>=.10;
+   const modelStrong=Number.isFinite(top.score)&&top.score>=.72&&gap>=.45&&top.similarity>=.75;
+   const identified=Boolean(top.id)&&(prototypeStrong||modelStrong);
+   const confidence=prototypeStrong?'correspondência visual mais distinta':modelStrong?'melhor hipótese visual, confiança limitada':'hipótese visual inconclusiva';
    const fabric=identified?(top.name||(F.find(f=>f.id===top.id)||{name:top.id}).name):'Tecido não identificado com segurança';
    const detailsText=(identified
-    ?(confidence==='correspondência visual mais distinta'?'O classificador supervisionado local do DINOv2 encontrou uma correspondência visual mais distinta com ':'A hipótese visual mais próxima do classificador é ')+fabric+'. O modelo foi treinado com amostras reais de materiais para estofados, mas ainda há poucas referências em algumas categorias e acabamentos parecidos podem ser confundidos. A aparência não confirma a composição química do tecido. Confirme pela etiqueta ou ficha técnica.'
-    :'O classificador não encontrou uma hipótese suficientemente distinta entre as categorias treinadas. Tecidos como bouclé, suede, microfibra e misturas específicas podem não estar bem representados. Tente uma foto próxima da trama, com luz uniforme e sem filtros.')+(dinoResult.sofaSceneDetected?' A imagem parece mostrar um sofá em visão geral; o scanner examinou uma grade adicional de 9 recortes para procurar a trama. Uma foto próxima ainda ajuda a confirmar o tecido.':'');
+    ?(prototypeStrong?'O DINOv2 encontrou uma correspondência consistente com amostras de tecido rotuladas: ':'O classificador treinado do DINOv2 aponta como hipótese visual mais provável: ')+fabric+'. A identificação é visual e não confirma a composição química; confirme pela etiqueta ou ficha técnica antes de escolher produtos.'
+    :'O DINOv2 não encontrou evidência visual suficiente para identificar este tecido com segurança. Para evitar indicar chenille, suede ou linho incorretamente, o scanner não vai forçar um rótulo. Fotografe a trama de perto, com luz uniforme, sem filtros e sem incluir muito do ambiente.')+(dinoResult.sofaSceneDetected?' A imagem parece mostrar um sofá em visão geral; o scanner examinou recortes adicionais. Uma foto mais próxima da trama ajuda a confirmar o resultado.':'');
    if(name)name.textContent=fabric;
    if(copy)copy.textContent=detailsText;
    if(confidenceEl)confidenceEl.textContent=identified?(confidence==='correspondência visual mais distinta'?'CORRESPONDÊNCIA MAIS DISTINTA':confidence==='hipótese visual inconclusiva'?'HIPÓTESE MAIS PRÓXIMA · BAIXA CONFIANÇA':'HIPÓTESE VISUAL · CONFIANÇA LIMITADA'):'RESULTADO INCONCLUSIVO';
