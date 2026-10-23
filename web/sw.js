@@ -1,4 +1,4 @@
-const CACHE='higienizapro-pwa-v20';
+const CACHE='higienizapro-pwa-v21';
 const CORE=['/','/manifest.webmanifest','/icon.svg'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{try{const cache=await caches.open(CACHE);await cache.addAll(CORE)}catch(error){console.warn('Pré-cache indisponível; o app continuará usando a rede',error)}await self.skipWaiting()})()));
 self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting()});
